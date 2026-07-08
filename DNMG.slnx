@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/DNMG/DNMG.csproj" />
+  <Project Path="src/DNMG.App.Console/DNMG.App.Console.csproj" />
+</Solution>

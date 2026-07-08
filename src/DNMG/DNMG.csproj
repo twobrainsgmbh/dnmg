@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+      <InternalsVisibleTo Include="TBGB.Tests" />
+      <InternalsVisibleTo Include="TBGB.PerfTests" />
+      <PackageReference Include="ErrorProne.NET.CoreAnalyzers" Version="0.8.2-beta.1" />
+      <PackageReference Include="ErrorProne.NET.Structs" Version="0.6.1-beta.1"/>
+  </ItemGroup>
+
+</Project>
