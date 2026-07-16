@@ -1,6 +1,6 @@
 DNMG
 ====
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/dotnet/dotNext/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/twobrainsgmbh/dnmg/blob/main/LICENSE)
 
 DNMG is a minimalistic, yet functional Game Boy emulator written in C# for educational purposes. With a focus on simplicity, it makes shortcuts and compromises where necessary to provide a dense and understandable implementation. Some features and behaviors may not fully match the original hardware, other features like sound emulation and link cable support are missing entirely.
 
