@@ -12,6 +12,7 @@ static internal class Program
 		var rom = File.ReadAllBytes(romFilename);
 
 		var cpu = new Cpu(rom);
+		var ppu = new Ppu(cpu);
 		var timer = new Timer(cpu);
 		var input = new Input(cpu);
 		var totalCycles = 0;
@@ -27,6 +28,7 @@ static internal class Program
 		{
 			var cycles = cpu.ExecuteSingleStep();
 			timer.ExecuteSingleStep(cycles);
+			ppu.ExecuteSingleStep(cycles);
 			totalCycles += cycles;
 			const int dotPerFrame = 70_224;
 			const int cyclesPerFrame = dotPerFrame / 4;
