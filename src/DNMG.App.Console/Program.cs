@@ -35,7 +35,8 @@ static internal class Program
 			if (totalCycles >= cyclesPerFrame)
 			{
 				totalCycles -= cyclesPerFrame;
-				// TODO: output frame buffer to console
+				System.Console.SetCursorPosition(0, 0);
+				PrintFrameBufferAsSixel(ppu, 2);
 
 #if WINDOWS
 				if (useController)
@@ -61,5 +62,37 @@ static internal class Program
 #endif
 			}
 		}
+	}
+
+	private static void PrintFrameBufferAsSixel(Ppu gpu, int scale)
+	{
+		var width = Ppu.ScreenWidth * scale;
+		var height = Ppu.ScreenHeight * scale;
+
+		var sb = new System.Text.StringBuilder();
+		sb.Append($"\eP0;0;0q\"1;1;{width};{height}");
+		sb.Append("#0;2;100;100;100#1;2;66;66;66#2;2;33;33;33#3;2;0;0;0");
+		for (int y = 0; y < height; y += 6)
+		{
+			for (int color = 0; color < 4; color++)
+			{
+				sb.Append('#').Append(color);
+				for (int x = 0; x < width; x++)
+				{
+					var c = (char)0;
+					for (int subY = 0; subY < 6; subY++)
+					{
+						var pixelColor = gpu.FrameBuffer[x / scale, (y + subY) / scale];
+						if (pixelColor == color)
+							c |= (char)(1 << subY);
+					}
+					c += '?';
+					sb.Append(c);
+				}
+				sb.Append(color == 3 ? '-' : '$');
+			}
+		}
+		sb.Append("\e\\");
+		System.Console.WriteLine(sb.ToString());
 	}
 }
