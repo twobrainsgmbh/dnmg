@@ -7,8 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-      <InternalsVisibleTo Include="TBGB.Tests" />
-      <InternalsVisibleTo Include="TBGB.PerfTests" />
+      <InternalsVisibleTo Include="$(ProjectName).Tests" />
       <PackageReference Include="ErrorProne.NET.CoreAnalyzers" Version="0.8.2-beta.1" />
       <PackageReference Include="ErrorProne.NET.Structs" Version="0.6.1-beta.1"/>
   </ItemGroup>
