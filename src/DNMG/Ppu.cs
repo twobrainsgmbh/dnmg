@@ -1,9 +1,12 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
 namespace DNMG;
 
 public sealed class Ppu
 {
 	[Flags]
-	public enum LcdcBits : byte
+	private enum LcdcBits : byte
 	{
 		None,
 		BackgroundAndWindowEnable = 1 << 0,
@@ -25,7 +28,7 @@ public sealed class Ppu
 	}
 
 	[Flags]
-	public enum StatBits : byte
+	private enum StatBits : byte
 	{
 		None = 0,
 		Mode1 = 1 << 0,
@@ -40,112 +43,72 @@ public sealed class Ppu
 	}
 
 	[Flags]
-	public enum OAMAttributeBits : byte
+	private enum OamBits : byte
 	{
 		None,
 		DMGPalette = 1 << 4,
 		XFlip = 1 << 5,
 		YFlip = 1 << 6,
-		Priority =  1 << 7
+		Priority = 1 << 7
 	}
 
-	/// <summary>
-	/// Populated once per line on the display to avoid scanning all 40 OAM entries for each pixel in a line
-	/// </summary>
-	readonly struct OAMRenderData
+	[StructLayout(LayoutKind.Sequential, Pack = 1)]
+	private readonly struct OamEntry
 	{
-		public readonly int X;
-		public readonly byte TileIndex;
-		public readonly int TileY;
-
-		public bool HasPriority => _attributes.HasFlag(OAMAttributeBits.Priority);
-		public bool XFlip => _attributes.HasFlag(OAMAttributeBits.XFlip);
-		public bool UseDMGPalette => _attributes.HasFlag(OAMAttributeBits.DMGPalette);
-
-		private readonly OAMAttributeBits _attributes;
-
-		public OAMRenderData(OAMAttributeBits attributes, int x, byte tileIndex, int tileY)
-		{
-			_attributes = attributes;
-			X = x;
-			TileIndex = tileIndex;
-			TileY = tileY;
-		}
+		public readonly byte Y, X, TileIndex;
+		public readonly OamBits Attributes;
 	}
 
 	private readonly Cpu _cpu;
 	private int _currentScanLineDots;
 
-	/// <summary>
-	/// LCD Control
-	/// </summary>
-	public LcdcBits LCDC { get => (LcdcBits)_cpu.Memory[0xFF40]; set => _cpu.Memory[0xFF40] = (byte)value; } // LCD Control Register
+	// LCD Control
+	private LcdcBits LCDC { get => (LcdcBits)_cpu.Memory[0xFF40]; set => _cpu.Memory[0xFF40] = (byte)value; }
 
-	/// <summary>
-	/// LCD Status
-	/// </summary>
-	public StatBits STAT { get => (StatBits)_cpu.Memory[0xFF41]; set => _cpu.Memory[0xFF41] = (byte)value; } // LCD status Register
+	// LCD Status
+	private StatBits STAT { get => (StatBits)_cpu.Memory[0xFF41]; set => _cpu.Memory[0xFF41] = (byte)value; }
 
-	/// <summary>
-	/// Background viewport Y position
-	/// </summary>
+	// Background viewport Y position
 	private byte SCY => _cpu.Memory[0xFF42];
 
-	/// <summary>
-	/// Background viewport X position
-	/// </summary>
+	// Background viewport X position
 	private byte SCX => _cpu.Memory[0xFF43];
 
-	/// <summary>
-	/// Window Y position, X position plus 7
-	/// </summary>
+	// Window Y position
 	private byte WY => _cpu.Memory[0xFF4A];
 
-	/// <summary>
-	/// Window X position plus 7
-	/// </summary>
+	// Window X position plus 7
 	private byte WX => _cpu.Memory[0xFF4B];
 
-	/// <summary>
-	/// LCD Y coordinate [read-only]. Values range from 0->153. 144->153 is the VBlank period.
-	/// </summary>
-	public byte LY { get => _cpu.Memory[0xFF44]; set => _cpu.Memory[0xFF44] = value; }
+	// LCD Y coordinate [read-only]. Values range from 0..153. 144..153 is the VBlank period.
+	private byte LY { get => _cpu.Memory[0xFF44]; set => _cpu.Memory[0xFF44] = value; }
 
-	/// <summary>
-	/// LY Compare. When LY=LYC, STATF_LYCF will be set in STAT and (if enabled) a STAT interrupt is fired.
-	/// </summary>
+	// LY Compare. When LY=LYC, STATF_LYCF will be set in STAT and (if enabled) a STAT interrupt is fired.
 	private byte LYC => _cpu.Memory[0xFF45];
-
-	private const ushort TilePaletteAddress = 0xFF47;
-	private const ushort OAMAttributesStartAddress = 0xFE00;
-	private const ushort OAMAttributesEndAddress = 0xFE9F;
-	private const ushort OBP0PaletteAddress = 0xFF48;
-	private const ushort OBP1PaletteAddress = 0xFF49;
 
 	public const int ScreenWidth = 160;
 	public const int ScreenHeight = 144;
-	public readonly byte[,] FrameBuffer = new byte[ScreenWidth, ScreenHeight];
+	public readonly byte[,] FrameBuffer = new byte[ScreenHeight, ScreenWidth]; // 0 = White, 1 = LightGray, 2 = DarkGray, 3 = Black
+	private PpuMode _mode;
 	private bool _statInterruptLine;
+	private readonly int[] _spriteSortKeys = new int[10];
 
 	public Ppu(Cpu cpu)
 	{
+		if (!BitConverter.IsLittleEndian)
+			throw new PlatformNotSupportedException("Big-endian platforms are not supported (tile decoding assumes little-endian).");
+
 		_cpu = cpu;
 		_cpu.OnMemoryWrite[0x41] = value => _cpu.Memory[0xFF41] = (byte)((_cpu.Memory[0xFF41] & 0b1000_0111) | (value & ~0b1000_0111)); // STAT
-		_cpu.OnMemoryWrite[0x46] = value => { _cpu.Memory[0xFF46] = value; Array.Copy(_cpu.Memory, value << 8, _cpu.Memory, 0xFE00, 0xA0); }; // DMA: OAM DMA source address & start
+		_cpu.OnMemoryWrite[0x46] = value => { _cpu.Memory[0xFF46] = value; Array.Copy(_cpu.Memory, value << 8, _cpu.Memory, 0xFE00, 0xA0); }; // DMA. This should be done in a more cycle-accurate way, but that would require a lot of changes to the CPU and memory system
 		STAT = StatBits.Reserved7;
 		LCDC = LcdcBits.BackgroundAndWindowEnable | LcdcBits.BackgroundAndWindowTileDataSelect | LcdcBits.LCDEnable;
 	}
 
-	private PpuMode GetMode() => LY < ScreenHeight ? _currentScanLineDots switch
-	{
-		< 80 => PpuMode.OAMScan,
-		< 369 => PpuMode.LCDTransfer,
-		_ => PpuMode.HBlank
-	} : PpuMode.VBlank;
-
 	public void ExecuteSingleStep(int cycleDelta)
 	{
-		if (!LCDC.HasFlag(LcdcBits.LCDEnable))
+		var lcdc = LCDC;
+		if (!lcdc.HasFlag(LcdcBits.LCDEnable))
 		{
 			// When LCD is disabled, LY is set to 0, and the mode is set to HBlank
 			LY = 0;
@@ -154,11 +117,9 @@ public sealed class Ppu
 			return;
 		}
 
-		var prevMode = GetMode();
-
 		const int dotsPerScanline = 456;
 		_currentScanLineDots += cycleDelta * 4; // 4 dots per CPU cycle
-		if (_currentScanLineDots > dotsPerScanline)
+		if (_currentScanLineDots >= dotsPerScanline)
 		{
 			_currentScanLineDots -= dotsPerScanline;
 			if (++LY > 153)
@@ -167,7 +128,12 @@ public sealed class Ppu
 				_cpu.RequestInterrupt(Cpu.IFBits.VBlank);
 		}
 
-		var mode = GetMode();
+		var mode = LY < ScreenHeight ? _currentScanLineDots switch
+		{
+			< 80 => PpuMode.OAMScan,
+			< 369 => PpuMode.LCDTransfer,
+			_ => PpuMode.HBlank
+		} : PpuMode.VBlank;
 
 		var stat = STAT;
 		stat &= (StatBits)0b1111_1000;
@@ -175,131 +141,119 @@ public sealed class Ppu
 		stat |= LYC == LY ? StatBits.LYCeqLY : 0;
 		STAT = stat;
 
-		var statInterruptLine = (stat.HasFlag(StatBits.LYCeqLY) && stat.HasFlag(StatBits.LYCIntEnable)) || (mode < PpuMode.LCDTransfer && (stat.HasFlag((StatBits)((int)StatBits.Mode0IntEnable << (int)mode))));
+		var statInterruptLine = (stat.HasFlag(StatBits.LYCeqLY) && stat.HasFlag(StatBits.LYCIntEnable)) || (mode < PpuMode.LCDTransfer && stat.HasFlag((StatBits)((int)StatBits.Mode0IntEnable << (int)mode)));
 		if (statInterruptLine && !_statInterruptLine) // set on rising edge
 			_cpu.RequestInterrupt(Cpu.IFBits.LCD);
 		_statInterruptLine = statInterruptLine;
 
-		// if we didn't just enter LCD Transfer mode, skip drawing (essentially moves to a new line (LY++) if it does NOT return)
-		if (mode != PpuMode.LCDTransfer || mode == prevMode)
+		// if the mode changed, and the new mode is LCDTransfer, then we need to render the current scanline
+		(_mode, mode) = (mode, _mode);
+		if (mode == _mode || _mode != PpuMode.LCDTransfer)
 			return;
 
-		var screenY = LY;
-		var lcdc = LCDC;
-
-		// Tile index addresses. 0 = 9800–9BFF; 1 = 9C00–9FFF - 32x32 tile indices. Total size = 1k
-		var backgroundTileIndexBaseAddr = lcdc.HasFlag(LcdcBits.BackgroundTileMapSelect) ? 0x9C00 : 0x9800;
-		var windowTileIndexBaseAddr = lcdc.HasFlag(LcdcBits.WindowTileMapSelect) ? 0x9C00 : 0x9800;
-		var palette = _cpu.Memory[TilePaletteAddress];
-
-		const int oamWidth = 8;
-		const int oam8By16Height = 16;
-		int oamHeight = lcdc.HasFlag(LcdcBits.ObjectSize) ? oam8By16Height : oamWidth;
-		var screenYForOAM = screenY + 16;
-
-		// Max 40 OAM entries; Only 10 can actually be visible on a given scanline.
-		Span<OAMRenderData> visibleOAMsInLine = stackalloc OAMRenderData[40];
-		int visibleOamCount = 0;
-
-		if (lcdc.HasFlag(LcdcBits.ObjectEnable))
+		// Read and sort OAM entries. The sorting is based on X position, then OAM index, and also includes the tile data for the current scanline as a
+		// cache to avoid redundant calculations later. Only sprites that are within the vertical range of the current scanline are included, and a
+		// maximum of 10 sprites are included since that's the maximum that can be displayed on a single scanline.
+		int screenY = LY;
+		var tileData = MemoryMarshal.Cast<byte, ushort>(new ReadOnlySpan<byte>(_cpu.Memory, 0x8000, 384 * sizeof(ushort) * 8));
+		var oam = MemoryMarshal.Cast<byte, OamEntry>(_cpu.Memory.AsSpan(0xFE00, 40 * Unsafe.SizeOf<OamEntry>()));
+		var spriteCount = 0;
+		if (lcdc.HasFlag(LcdcBits.ObjectEnable)) // only gather sprites if they are enabled
 		{
-			var u = OAMAttributesStartAddress;
-			while (u <= OAMAttributesEndAddress)
+			var spriteHeightMinusOne = lcdc.HasFlag(LcdcBits.ObjectSize) ? 15 : 7;
+			for (var i = 0; i < oam.Length; i++)
 			{
-				var y = _cpu.Memory[u++];
-				if (screenYForOAM < y || screenYForOAM >= y + oamHeight)
-				{
-					u += 3;
+				ref var entry = ref oam[i];
+				var row = screenY + 16 - entry.Y; // sprite Y position is offset by 16, so we need to subtract that to get the effective row within the sprite
+				if (row < 0 || row > spriteHeightMinusOne)
 					continue;
-				}
-
-				var x = _cpu.Memory[u++];
-				var tileIndex = _cpu.Memory[u++];
-				var attributes = (OAMAttributeBits)_cpu.Memory[u++];
-
-				var tileIsTopTile = true; // Only relevant for 8x16 OAM with an upper and lower title in a single OAM - defines if the current screenY position lies in the upper tile (non-Y-flipped)
-				if (oamHeight == oam8By16Height)
-				{
-					tileIsTopTile = screenYForOAM - 8 < y;
-					tileIndex = (tileIsTopTile && !attributes.HasFlag(OAMAttributeBits.YFlip)) || (!tileIsTopTile && attributes.HasFlag(OAMAttributeBits.YFlip)) ?
-						(byte)(tileIndex & 0xFE) : (byte)(tileIndex | 0x01);
-				}
-
-				// Pre-compute the Y coordinate within the tile, because it is constant for the entire scanline
-				var tileY = attributes.HasFlag(OAMAttributeBits.YFlip)
-					? y + (tileIsTopTile ? 7 : 15) - screenYForOAM
-					: screenYForOAM - (tileIsTopTile ? 0 : 8) - y;
-
-				visibleOAMsInLine[visibleOamCount++] = new OAMRenderData(attributes, x, tileIndex, tileY);
+				// in 8x16 mode, the lower bit of the tile index is ignored, and the row determines whether to use tileIndex or tileIndex + 1
+				var tileIndex = spriteHeightMinusOne == 15 ? (entry.TileIndex & ~1) : entry.TileIndex;
+				if (entry.Attributes.HasFlag(OamBits.YFlip)) // if the sprite is flipped vertically, invert the row to get the correct tile data
+					row = spriteHeightMinusOne - row;
+				// Sort by X position, then by OAM index. Also include tile data as a cache (not relevant for sorting). Merge everything
+				// into a single int (but leave the sign bit unused) like: 0b00XX_XXXX_XXII_IIII_DDDD_DDDD_DDDD_DDDD
+				_spriteSortKeys[spriteCount++] = (entry.X << 22) | (i << 16) | tileData[(tileIndex * 8) + row];
+				if (spriteCount == _spriteSortKeys.Length)
+					break;
 			}
+			if (spriteCount > 1)
+				Array.Sort(_spriteSortKeys, 0, spriteCount);
 		}
 
+		// precalculate background related values that are shared across the entire scanline, to avoid redundant calculations within the pixel loop
+		var backgroundTileRow = (SCY + screenY) & 0xFF; // background wraps around, use & 0xFF to simulate that behavior
+		var backgroundTileMapRowAddr = (lcdc.HasFlag(LcdcBits.BackgroundTileMapSelect) ? 0x9C00 : 0x9800) + ((backgroundTileRow / 8) * 32); // each tile covers 8 pixels vertically, and there are 32 tile indices per row
+		backgroundTileRow %= 8; // effective row within the background tile, between 0 and 7
+
+		// precalculate window related values that are shared across the entire scanline
+		var windowTileRow = screenY - WY;
+		var windowTileMapRowAddr = (lcdc.HasFlag(LcdcBits.WindowTileMapSelect) ? 0x9C00 : 0x9800) + ((windowTileRow / 8) * 32); // each tile covers 8 pixels vertically, and there are 32 tile indices per row
+		var windowX = (lcdc.HasFlag(LcdcBits.WindowEnable) && windowTileRow >= 0) ? WX - 7 : int.MaxValue; // setting it to int.MaxValue effectively disables the window for this scanline
+		windowTileRow %= 8; // effective row within the tile, between 0 and 7. Do this last, as (-8, -16, etc) % 8 turns into +0 which would incorrectly make the window visible
+
+		// cache other values that are statically known within this scanline
+		var scx = SCX; // cache SCX since it's used for every pixel
+		var tilePalette = _cpu.Memory[0xFF47]; // background palette
+		var obp0Palette = _cpu.Memory[0xFF48]; // object palette 0
+		var obp1Palette = _cpu.Memory[0xFF49]; // object palette 1
+		var passedSprites = 0; // as we iterate through pixels from left to right, we can skip sprites that are already passed
+		ref var currentTargetPixel = ref FrameBuffer[screenY, 0];
 		for (var screenX = 0; screenX < ScreenWidth; screenX++)
 		{
-			var color = 0;
-			var backgroundAndWindowColorIndex = 0;
+			var colorIndex = 0;
+			int palette = tilePalette;
+
+			// handle background and window (window has priority over background)
 			if (lcdc.HasFlag(LcdcBits.BackgroundAndWindowEnable))
 			{
-				backgroundAndWindowColorIndex = GetBackgroundTileMapPixelIndex(backgroundTileIndexBaseAddr, (byte)(SCX + screenX), (byte)(SCY + screenY));
-				if (lcdc.HasFlag(LcdcBits.WindowEnable))
+				int tileMapRowAddr, x, y;
+				if (screenX < windowX) // current pixel not within window region? use background values
 				{
-					var x = screenX - (WX - 7);
-					var y = screenY - WY;
-					if (x >= 0 && y >= 0)
-						backgroundAndWindowColorIndex = GetBackgroundTileMapPixelIndex(windowTileIndexBaseAddr, x, y);
+					tileMapRowAddr = backgroundTileMapRowAddr;
+					x = (screenX + scx) & 0xFF; // background wraps around, use & 0xFF to simulate that behavior
+					y = backgroundTileRow;
 				}
-				color = (palette >> (backgroundAndWindowColorIndex * 2)) & 0b11;
+				else
+				{
+					tileMapRowAddr = windowTileMapRowAddr;
+					x = screenX - windowX; // always between 0 and ScreenWidth - 1
+					y = windowTileRow;
+				}
+				int tileIndex = _cpu.Memory[tileMapRowAddr + (x / 8)]; // each tile covers 8x8 pixels
+				if (!lcdc.HasFlag(LcdcBits.BackgroundAndWindowTileDataSelect))
+					tileIndex = 256 + (sbyte)tileIndex;
+				colorIndex = (tileData[(tileIndex * 8) + y] >> (7 - (x % 8))) & 0x0101;
 			}
 
-			// Render only pre-filtered OAM sprites for this pixel
-			var screenXForOAM = screenX + 8;
-			for (var i = 0; i < visibleOamCount; i++)
+			// handle sprites
+			for (var i = passedSprites; i < spriteCount; i++)
 			{
-				ref var oam = ref visibleOAMsInLine[i];
-
-				if (screenXForOAM < oam.X || screenXForOAM >= oam.X + oamWidth || (oam.HasPriority && backgroundAndWindowColorIndex != 0))
-					continue;
-
-				var oamColorIndex = GetTilePixelColorIndex(oam.TileIndex, oam.XFlip ? oam.X + 7 - screenXForOAM : screenXForOAM - oam.X, oam.TileY);
-
-				if (oamColorIndex != 0)
+				var key = _spriteSortKeys[i];
+				ref var entry = ref oam[(key >> 16) & 0x3F]; // get oam index, use & 0x3F to ignore the bits from entry.X
+				var col = screenX + 8 - entry.X; // sprite X position is offset by 8, so we need to subtract that to get the effective column within the sprite
+				if (col < 0) // if this sprite is not yet visible, then the rest of the sprites will also not be visible
+					break;
+				if (col > 7)
 				{
-					color = _cpu.Memory[oam.UseDMGPalette ? OBP1PaletteAddress : OBP0PaletteAddress] >> (oamColorIndex * 2);
-					color &= 0b11;
+					++passedSprites; // if this sprite has already passed, we can skip it in future iterations
+					continue;
 				}
+				var spriteColorIndex = (key >> (entry.Attributes.HasFlag(OamBits.XFlip) ? col : 7 - col)) & 0x0101;
+				if (spriteColorIndex == 0) // do not process transparent pixels, and continue to the next sprite in the list
+					continue;
+				if (!entry.Attributes.HasFlag(OamBits.Priority) || colorIndex == 0) // sprite has priority over background when priority bit is not set, or when bg color index is 0
+				{
+					colorIndex = spriteColorIndex;
+					palette = entry.Attributes.HasFlag(OamBits.DMGPalette) ? obp1Palette : obp0Palette;
+				}
+				break;
 			}
 
-			FrameBuffer[screenX, screenY] = (byte)color;
+			// calculate the final color and write it to the framebuffer
+			colorIndex |= colorIndex >> 7; // combine the previously masked 0bH_0000_000L bits into a single 0bH_0000_00HL value
+			currentTargetPixel = (byte)((palette >> (colorIndex * 2)) & 0b11); // intentionally not using "colorIndex & 0b11" before shifting, because shifts are "count % 32" by definition
+			currentTargetPixel = ref Unsafe.Add(ref currentTargetPixel, 1);
 		}
-	}
-
-	private int GetBackgroundTileMapPixelIndex(int tileIndexBaseAddr, int x, int y)
-	{
-		var tilemapX = x / 8;
-		var tilemapY = y / 8;
-
-		var tileIndexAddress = tileIndexBaseAddr + (tilemapY * 32) + tilemapX;
-		int tileIndex = _cpu.Memory[tileIndexAddress];
-		if (!LCDC.HasFlag(LcdcBits.BackgroundAndWindowTileDataSelect))
-			tileIndex = 256 + (sbyte)tileIndex;
-		return GetTilePixelColorIndex(tileIndex, x % 8, y % 8);
-	}
-
-	private int GetTilePixelColorIndex(int tileIndex, int x, int y)
-	{
-		// Each tile is 16 bytes (2 bytes per row for 8 rows). 256 Tiles. Total size = 4k
-		var offs = 0x8000 + (tileIndex * 16) + (y * 2);
-		var l = _cpu.Memory[offs];
-		var h = _cpu.Memory[offs + 1];
-
-		var shift = 7 - x;
-		l >>= shift;
-		l &= 0b1;
-
-		h >>= shift;
-		h &= 0b1;
-		h <<= 1;
-
-		return l | h;
 	}
 }
