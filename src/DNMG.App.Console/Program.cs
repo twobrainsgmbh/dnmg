@@ -101,7 +101,7 @@ internal static class Program
 					var c = (char)0;
 					for (int subY = 0; subY < 6; subY++)
 					{
-						var pixelColor = gpu.FrameBuffer[x / scale, (y + subY) / scale];
+						var pixelColor = gpu.FrameBuffer[(y + subY) / scale, x / scale];
 						if (pixelColor == color)
 							c |= (char)(1 << subY);
 					}
