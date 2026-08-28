@@ -16,9 +16,7 @@ static internal class Program
 		var timer = new Timer(cpu);
 		var input = new Input(cpu);
 		var totalCycles = 0;
-
-		// Set default Joypad state to "No buttons pressed"
-		input.PressedButtons = 0;
+		var consoleKeyResetFrameCount = 0; // a counter to reset the Joypad state from key presses every x frames (to avoid stuck buttons)
 
 #if WINDOWS
 		// calling XInputGetState comes with a cost we only want to pay if a controller is actually attached.
@@ -37,6 +35,10 @@ static internal class Program
 				totalCycles -= cyclesPerFrame;
 				System.Console.SetCursorPosition(0, 0);
 				PrintFrameBufferAsSixel(ppu, 2);
+
+				// reset the Joypad state if no new key has been pressed for a few frames
+				if (consoleKeyResetFrameCount > 0 && --consoleKeyResetFrameCount == 0)
+					input.PressedButtons = 0;
 
 #if WINDOWS
 				if (useController)
@@ -60,6 +62,23 @@ static internal class Program
 					input.PressedButtons = keys;
 				}
 #endif
+				// basic keyboard support for Joypad input
+				if (System.Console.KeyAvailable && System.Console.ReadKey(true).Key switch
+				{
+					ConsoleKey.RightArrow => Input.JoypadButtons.RightArrow,
+					ConsoleKey.LeftArrow => Input.JoypadButtons.LeftArrow,
+					ConsoleKey.UpArrow => Input.JoypadButtons.UpArrow,
+					ConsoleKey.DownArrow => Input.JoypadButtons.DownArrow,
+					ConsoleKey.A => Input.JoypadButtons.A,
+					ConsoleKey.S => Input.JoypadButtons.B,
+					ConsoleKey.Enter => Input.JoypadButtons.Start,
+					ConsoleKey.Spacebar => Input.JoypadButtons.Select,
+					_ => default(Input.JoypadButtons?)
+				} is { } key)
+				{
+					input.PressedButtons |= key;
+					consoleKeyResetFrameCount = 10;
+				}
 			}
 		}
 	}
