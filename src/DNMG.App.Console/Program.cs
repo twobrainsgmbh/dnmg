@@ -4,7 +4,7 @@ using Windows.Win32.UI.Input.XboxController;
 
 namespace DNMG.App.Console;
 
-static internal class Program
+internal static class Program
 {
 	static void Main(string[] args)
 	{
