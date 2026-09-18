@@ -5,12 +5,14 @@ DNMG - Dot(Net) Matrix Game
 
 DNMG is a minimalistic, yet functional Game Boy emulator written in C# for educational purposes. With a focus on simplicity, it makes shortcuts and compromises where necessary to provide a dense and understandable implementation. Some features and behaviors may not fully match the original hardware, other features like sound emulation and link cable support are missing entirely.
 
-That said, it is passing large portions of the `dmg-acid2` and `blargg` testsuites and capable of running the majority of Homebrew Games and even some demoscene productions available.
+That said, it is passing [`dmg-acid2`](https://github.com/mattcurrie/dmg-acid2), Blargg's [`cpu_instrs`](https://github.com/retrio/gb-test-roms/tree/master/cpu_instrs/individual) and [`instr_timing`](https://github.com/retrio/gb-test-roms/tree/master/instr_timing) testsuites and capable of running the majority of Homebrew Games and even some demoscene productions available.
+
+Xbox Controller support is available on Windows. On any supported .NET platform, any [Sixel-compatible terminal](https://www.arewesixelyet.com/) (like Windows Terminal) can be used to display the Game Boy screen in a terminal window and to interact with the emulator using a keyboard.
 
 ## Contributing
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
-the rights to use your contribution. For details, visit https://cla.microsoft.com.
+the rights to use your contribution.
 
 ## Legal Disclaimer
 

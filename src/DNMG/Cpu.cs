@@ -479,7 +479,7 @@ public sealed class Cpu
 				BC = PopFromStack();
 				return 3;
 
-			case 0xC2: // JP NZ, a16 [JR cc,n16]
+			case 0xC2: // JP NZ, a16 [JP cc,n16]
 				if (!FlagZ)
 					goto case 0xC3;
 				PC += 2;
@@ -519,7 +519,7 @@ public sealed class Cpu
 				PC = PopFromStack();
 				return 4;
 
-			case 0xCA: // JP Z, a16 [JR cc,n16]
+			case 0xCA: // JP Z, a16 [JP cc,n16]
 				if (FlagZ)
 					goto case 0xC3;
 				PC += 2;
@@ -548,7 +548,7 @@ public sealed class Cpu
 				DE = PopFromStack();
 				return 3;
 
-			case 0xD2: // JP NC, a16 [JR cc,n16]
+			case 0xD2: // JP NC, a16 [JP cc,n16]
 				if (!FlagC)
 					goto case 0xC3;
 				PC += 2;
@@ -574,7 +574,7 @@ public sealed class Cpu
 				PC = PopFromStack();
 				return 4;
 
-			case 0xDA: // JP C, a16 [JR cc,n16]
+			case 0xDA: // JP C, a16 [JP cc,n16]
 				if (FlagC)
 					goto case 0xC3;
 				PC += 2;
