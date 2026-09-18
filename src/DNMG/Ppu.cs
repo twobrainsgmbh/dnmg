@@ -92,6 +92,8 @@ public sealed class Ppu
 	private PpuMode _mode;
 	private bool _statInterruptLine;
 	private readonly int[] _spriteSortKeys = new int[10];
+	private const int WLY_NOT_LATCHED = -1;
+	private int _wly = WLY_NOT_LATCHED; // internal windows line counter
 
 	public Ppu(Cpu cpu)
 	{
@@ -122,8 +124,13 @@ public sealed class Ppu
 		if (_currentScanLineDots >= dotsPerScanline)
 		{
 			_currentScanLineDots -= dotsPerScanline;
-			if (++LY > 153)
+			if (++LY > 153) // new frame?
+			{
 				LY = 0;
+				_wly = WLY_NOT_LATCHED;
+			}
+			if (_wly == WLY_NOT_LATCHED && LY == WY) // window position not yet latched, and the current scanline is the window Y position? latch it now
+				_wly = 0;
 			if (LY == ScreenHeight) // VBlank?
 				_cpu.RequestInterrupt(Cpu.IFBits.VBlank);
 		}
@@ -187,10 +194,10 @@ public sealed class Ppu
 		backgroundTileRow %= 8; // effective row within the background tile, between 0 and 7
 
 		// precalculate window related values that are shared across the entire scanline
-		var windowTileRow = screenY - WY;
+		var windowTileRow = _wly;
 		var windowTileMapRowAddr = (lcdc.HasFlag(LcdcBits.WindowTileMapSelect) ? 0x9C00 : 0x9800) + ((windowTileRow / 8) * 32); // each tile covers 8 pixels vertically, and there are 32 tile indices per row
-		var windowX = (lcdc.HasFlag(LcdcBits.WindowEnable) && windowTileRow >= 0) ? WX - 7 : int.MaxValue; // setting it to int.MaxValue effectively disables the window for this scanline
-		windowTileRow %= 8; // effective row within the tile, between 0 and 7. Do this last, as (-8, -16, etc) % 8 turns into +0 which would incorrectly make the window visible
+		var windowX = (lcdc.HasFlag(LcdcBits.BackgroundAndWindowEnable) && lcdc.HasFlag(LcdcBits.WindowEnable) && windowTileRow >= 0) ? -(WX - 6) : int.MinValue; // setting it to int.MinValue effectively disables the window for this scanline
+		windowTileRow %= 8; // effective row within the window tile, between 0 and 7
 
 		// cache other values that are statically known within this scanline
 		var scx = SCX; // cache SCX since it's used for every pixel
@@ -208,7 +215,7 @@ public sealed class Ppu
 			if (lcdc.HasFlag(LcdcBits.BackgroundAndWindowEnable))
 			{
 				int tileMapRowAddr, x, y;
-				if (screenX < windowX) // current pixel not within window region? use background values
+				if (++windowX < 0) // current pixel not within window region? use background values
 				{
 					tileMapRowAddr = backgroundTileMapRowAddr;
 					x = (screenX + scx) & 0xFF; // background wraps around, use & 0xFF to simulate that behavior
@@ -217,7 +224,7 @@ public sealed class Ppu
 				else
 				{
 					tileMapRowAddr = windowTileMapRowAddr;
-					x = screenX - windowX; // always between 0 and ScreenWidth - 1
+					x = windowX;
 					y = windowTileRow;
 				}
 				int tileIndex = _cpu.Memory[tileMapRowAddr + (x / 8)]; // each tile covers 8x8 pixels
@@ -255,5 +262,8 @@ public sealed class Ppu
 			currentTargetPixel = (byte)((palette >> (colorIndex * 2)) & 0b11); // intentionally not using "colorIndex & 0b11" before shifting, because shifts are "count % 32" by definition
 			currentTargetPixel = ref Unsafe.Add(ref currentTargetPixel, 1);
 		}
+
+		if (windowX >= 0)
+			++_wly; // only increment the window Y position if the window is actually visible on this scanline
 	}
 }
