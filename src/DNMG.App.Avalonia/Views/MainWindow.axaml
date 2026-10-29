@@ -1,0 +1,60 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewModels="clr-namespace:DNMG.App.Avalonia.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="DNMG.App.Avalonia.Views.MainWindow"
+        x:DataType="viewModels:MainWindowViewModel"
+        Icon="/Assets/dnmg.ico"
+        Width="1280"
+        Height="1180"
+        Focusable="True"
+        Title="DNMG - The C# Game Boy Emulator">
+
+    <Design.DataContext>
+        <viewModels:MainWindowViewModel />
+    </Design.DataContext>
+
+    <Grid>
+        <DockPanel LastChildFill="True">
+            <DockPanel DockPanel.Dock="Top">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" Margin="8,0">
+                    <TextBlock Text="Volume" VerticalAlignment="Center" />
+                    <Slider Width="150" Minimum="0" Maximum="1" Value="{Binding Volume, Mode=TwoWay}" Focusable="False" VerticalAlignment="Center" />
+                </StackPanel>
+                <Menu>
+                    <MenuItem Header="_File">
+                        <MenuItem Header="_Open..." Command="{Binding LoadAndExecuteRomFile}" />
+                        <Separator />
+                        <MenuItem Header="_Save Screenshot..." Command="{Binding SaveScreenshot}" IsEnabled="{Binding IsEmulationRunning}" />
+                        <Separator />
+                        <MenuItem Header="_Exit" Command="{Binding QuitApplication}" />
+                    </MenuItem>
+                    <MenuItem Header="Settings">
+                        <MenuItem ToggleType="CheckBox" Header="Reduce Speed" IsChecked="{Binding ReduceSpeed, Mode=TwoWay}" />
+                        <MenuItem ToggleType="CheckBox" Header="Mono Audio" IsChecked="{Binding IsMono, Mode=TwoWay}" />
+                        <MenuItem ToggleType="CheckBox" Header="Low Latency Audio" IsChecked="{Binding IsLowLatencyAudio, Mode=TwoWay}" IsEnabled="{Binding IsLowLatencyAudioSupported}" />
+                        <MenuItem Header="Sample Rate">
+                            <MenuItem ToggleType="Radio" Header="Auto (44.1 / 48 kHz)" Command="{Binding SetSampleRate}" CommandParameter="Auto" IsChecked="True" />
+                            <MenuItem ToggleType="Radio" Header="44.1 kHz" Command="{Binding SetSampleRate}" CommandParameter="44100" />
+                            <MenuItem ToggleType="Radio" Header="48 kHz" Command="{Binding SetSampleRate}" CommandParameter="48000" />
+                            <MenuItem ToggleType="Radio" Header="96 kHz" Command="{Binding SetSampleRate}" CommandParameter="96000" />
+                            <MenuItem ToggleType="Radio" Header="192 kHz" Command="{Binding SetSampleRate}" CommandParameter="192000" />
+                        </MenuItem>
+                        <MenuItem Header="Color Palette">
+                            <MenuItem ToggleType="Radio" Header="Original GameBoy" Command="{Binding SetColorPalette}" CommandParameter="Dmg" IsChecked="True" />
+                            <MenuItem ToggleType="Radio" Header="Game Boy Pocket" Command="{Binding SetColorPalette}" CommandParameter="Pocket" />
+                            <MenuItem ToggleType="Radio" Header="Crimson" Command="{Binding SetColorPalette}" CommandParameter="Crimson" />
+                        </MenuItem>
+                    </MenuItem>
+                </Menu>
+            </DockPanel>
+
+            <Image x:Name="RenderImage" DockPanel.Dock="Bottom" Source="{Binding GameBoyScreenBuffer}"
+                   Stretch="Uniform"
+                   RenderOptions.BitmapInterpolationMode="None" />
+        </DockPanel>
+        <TextBlock Margin="10" FontSize="20" VerticalAlignment="Center" Text="{Binding ErrorMessageFromCrashedEmulationTask}" Foreground="Red" />
+    </Grid>
+</Window>
